@@ -1,0 +1,14 @@
+6bbfaa99dd2a0c33d702236921d68398 *DESCRIPTION
+1e04c9df7ae60ca4e848b86fe3b62a7b *NAMESPACE
+2d95e872bf9dad51f40ca80b8c97b52b *NEWS.md
+eb06614c98e7ab7caae733aee3f575d0 *R/data.R
+2e65ea4a260d2d361335e8121af7ed67 *R/sim_qi.R
+7931e653198ee2cb6df8083df98b49c8 *R/sim_qi.clm.R
+69feedfd099b6016461dc739c9c6d58f *R/sim_qi.glm.R
+d65fef9db7a8ce23445247d7633301bb *R/sim_qi.lm.R
+9edefcab3faa40fbed86e54c3455ecbd *README.md
+18cab4b68e017d57d4d430238985757f *data/kgss_sample.rda
+2636a678dfcbefebbc214800518c504d *data/som_sample.rda
+e6737e15da4aacf1ed61a090ed3df73b *man/kgss_sample.Rd
+91deeed020158d64e31ee3a30aecfaa1 *man/sim_qi.Rd
+dc7a8efe04cc7779f25031fd3bac6a51 *man/som_sample.Rd
