@@ -9,7 +9,8 @@ sim_qi(
   nsim = 1000,
   newdata,
   original_scale = TRUE,
-  return_newdata = FALSE
+  return_newdata = FALSE,
+  vcov = NULL
 )
 }
 \arguments{
@@ -31,6 +32,11 @@ simulations on the linear model.}
 additional columns corresponding with the inputs provided to \code{newdata}.
 This may facilitate easier transformation along with greater clarity as to
 what the simulations correspond.}
+
+\item{vcov}{a manual variance-covariance matrix to supply to the simulation
+process. Use with caution, and if you did some kind of on-the-fly standard
+error adjustment in your regression model to make your results "robust". If
+nothing is supplied, the model's default variance-covariance matrix is used.}
 }
 \value{
 \code{sim_qi()} returns a data frame (as a \code{tibble}) with the
@@ -62,27 +68,65 @@ from a regression model
 \item Links: logit, probit
 }
 }
+\subsection{What \code{original_scale} Does in This Function}{
+
+\code{original_scale} defaults to TRUE in this function. When TRUE, the simulated
+quantity that's returned is a quantity on its "original scale." Understanding
+what exactly that means requires some knowledge about the model in question
+and what exactly the model is estimating on your behalf. In the simple linear
+model produced by the \code{lm()} function in base R, this is straightforward (and,
+thus, this argument does nothing for that model). The quantity returned is
+the estimated value of the dependent variable. However, models with some kind
+of link function return fitted values on some particular scale that might not
+be so user-friendly (e.g. a probit index, or a natural logged odds). However,
+that is the "original scale" on which the fitted values are returned. This
+summary table may help you better understand what this argument does with
+respect to what you want.\tabular{cccc}{
+   \emph{Model Function} \tab \emph{Family (Link)} \tab \emph{original_scale = TRUE} \tab \emph{original_scale = FALSE} \cr
+   \code{lm()} \tab NA \tab NA (Estimated value of \emph{y}) \tab NA (Estimated value of \emph{y}) \cr
+   \code{glm()} \tab binomial(link='logit') \tab natural logged odds of \emph{y} = 1 \tab probability of \emph{y} = 1 \cr
+   \code{glm()} \tab binomial(link='probit') \tab probit index of \emph{y} = 1 \tab probability of \emph{y} = 1 \cr
+   \code{glm()} \tab poisson(link='log') \tab logged lambda \tab lambda \cr
+   \code{clm()} \tab link = 'logit' \tab natural logged odds of \emph{y} = value \emph{j} \tab probability of \emph{y} = value \emph{j} \cr
+   \code{clm()} \tab link = 'probit' \tab probit index of \emph{y} = value \emph{j} \tab probability of \emph{y} = value \emph{j} \cr
+   \code{logistf()} \tab NA \tab natural logged odds of \emph{y} = 1 \tab probability of \emph{y} = 1 \cr
+}
+
+
+For ordinal models, I recommend setting \code{original_scale} to be FALSE. The
+function, underneath the hood, is actually calculating things on the level of
+the probability. It's just transforming back to a natural logged odds or a
+probit index, if that is what you say you want.
+}
+
 \subsection{Other Details}{
 
 Specifying a variable in \code{newdata} with the exact same name as the
 dependent variable (e.g. \code{mpg} in the simple example provided in this
-documentation file) is necessary for matrix multiplication purposes. If you
-set \code{return_newdata} to \code{TRUE}, you should not interpret the column matching
-the name of the dependent variable as communicating the kind of information
-you want from this function. That particular column is just a simple
-placeholder you need for matrix multiplication. The information you want will
-always be in a column (or columns) named (or starting with) \code{y}.
+documentation file) is necessary for matrix multiplication purposes. The
+function will do that for you if you have not done it yourself. I recommend
+letting this function do that for you. For matrix multiplication purposes,
+this column this function creates will have a default of 0. It does not
+(should not?) matter for the simulations.
+
+If nothing is supplied in \code{newdata}, \code{model.frame()} is called and the
+simulations are run on the data that inform the model itself. I don't
+recommend this, but it works for debugging purposes.
 
 This function builds in an implicit assumption that your dependent variable
-in the regression model is not called \code{y}.
+in the regression model is not called \code{y}. Nothing about this function will
+misbehave (as far as I know) if your dependent variable is called \code{y} in the
+model, but it may lead to some confusion in how you interpret the results of
+the simulations. The simulated values are always returned as a column called
+\code{y}.
 
-For ordinal models, I recommend setting \code{original_scale} to be FALSE. The
-function, underneath the hood, is actually calculating things on the level of
-the probability. It's just transforming back to a logit or a probit, if that
-is what you say you want.
-
-When \code{original_scale} is \code{TRUE} for Poisson models, the quantity returned is
-a logged lambda. When \code{FALSE}, this quantity is exponentiated.
+Factors (so-called "fixed effects") behave curiously in this function. For now,
+this function will politely assume your factors are \emph{all} present in the
+\code{newdata} you create (even if you don't want them). Future updates
+will try to understand this behavior better. The only loss here is the
+efficiency of the simulation procedure, especially if you are not interested
+in simulated values of the dependent variable for particular combinations of
+the factor variable.
 }
 }
 
@@ -90,22 +134,9 @@ a logged lambda. When \code{FALSE}, this quantity is exponentiated.
 
 set.seed(8675309)
 
-Data <- mtcars
-Data$region <- c("Japan", "Japan", "Japan",
-                 "USA", "USA", "USA", "USA",
-                 "Europe", "Europe", "Europe", "Europe",
-                 "Europe", "Europe", "Europe",
-                 "USA", "USA", "USA", "Europe",
-                 "Japan", "Japan", "Japan",
-                 "USA", "USA", "USA", "USA",
-                 "Europe", "Europe", "Europe",
-                 "USA", "Europe", "Europe", "Europe")
+M1 <- lm(mpg ~ hp + am, mtcars)
 
-M1 <- lm(mpg ~ hp + region, Data)
-
-sim_qi(M1, 10)
-
-newdat <- data.frame(mpg = 0, region = c("Europe", "Japan", "USA"), hp = 123)
+newdat <- data.frame(am = c(0,1), hp = 123)
 
 sim_qi(M1, nsim = 100, newdat, return_newdata = TRUE)
 

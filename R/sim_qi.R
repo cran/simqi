@@ -17,6 +17,10 @@
 #' additional columns corresponding with the inputs provided to \code{newdata}.
 #' This may facilitate easier transformation along with greater clarity as to
 #' what the simulations correspond.
+#' @param vcov a manual variance-covariance matrix to supply to the simulation
+#' process. Use with caution, and if you did some kind of on-the-fly standard
+#' error adjustment in your regression model to make your results "robust". If
+#' nothing is supplied, the model's default variance-covariance matrix is used.
 #'
 #' @return
 #'
@@ -43,52 +47,76 @@
 #' 3. Cumulative link models produced by \pkg{ordinal} package.
 #'      - Links: logit, probit
 #'
+#' ## What `original_scale` Does in This Function
+#'
+#' `original_scale` defaults to TRUE in this function. When TRUE, the simulated
+#' quantity that's returned is a quantity on its "original scale." Understanding
+#' what exactly that means requires some knowledge about the model in question
+#' and what exactly the model is estimating on your behalf. In the simple linear
+#' model produced by the `lm()` function in base R, this is straightforward (and,
+#' thus, this argument does nothing for that model). The quantity returned is
+#' the estimated value of the dependent variable. However, models with some kind
+#' of link function return fitted values on some particular scale that might not
+#' be so user-friendly (e.g. a probit index, or a natural logged odds). However,
+#' that is the "original scale" on which the fitted values are returned. This
+#' summary table may help you better understand what this argument does with
+#' respect to what you want.
+#'
+#' | *Model Function* | *Family (Link)* | *original_scale = TRUE* | *original_scale = FALSE* |
+#' |:----------------:|:------:|:-----------------------:|:------------------------:|
+#' | `lm()` | NA | NA (Estimated value of *y*) | NA (Estimated value of *y*) |
+#' | `glm()`| binomial(link='logit') | natural logged odds of *y* = 1 | probability of *y* = 1 |
+#' | `glm()`| binomial(link='probit') | probit index of *y* = 1 | probability of *y* = 1 |
+#' | `glm()`| poisson(link='log') | logged lambda | lambda |
+#' | `clm()`| link = 'logit' | natural logged odds of *y* = value *j* | probability of *y* = value *j* |
+#' | `clm()`| link = 'probit' | probit index of *y* = value *j* | probability of *y* = value *j* |
+#' | `logistf()`| NA | natural logged odds of *y* = 1 | probability of *y* = 1 |
+#'
+#' For ordinal models, I recommend setting `original_scale` to be FALSE. The
+#' function, underneath the hood, is actually calculating things on the level of
+#' the probability. It's just transforming back to a natural logged odds or a
+#' probit index, if that is what you say you want.
+#'
 #' ## Other Details
 #'
 #' Specifying a variable in `newdata` with the exact same name as the
 #' dependent variable (e.g. `mpg` in the simple example provided in this
-#' documentation file) is necessary for matrix multiplication purposes. If you
-#' set `return_newdata` to `TRUE`, you should not interpret the column matching
-#' the name of the dependent variable as communicating the kind of information
-#' you want from this function. That particular column is just a simple
-#' placeholder you need for matrix multiplication. The information you want will
-#' always be in a column (or columns) named (or starting with) `y`.
+#' documentation file) is necessary for matrix multiplication purposes. The
+#' function will do that for you if you have not done it yourself. I recommend
+#' letting this function do that for you. For matrix multiplication purposes,
+#' this column this function creates will have a default of 0. It does not
+#' (should not?) matter for the simulations.
+#'
+#' If nothing is supplied in `newdata`, `model.frame()` is called and the
+#' simulations are run on the data that inform the model itself. I don't
+#' recommend this, but it works for debugging purposes.
 #'
 #' This function builds in an implicit assumption that your dependent variable
-#' in the regression model is not called `y`.
+#' in the regression model is not called `y`. Nothing about this function will
+#' misbehave (as far as I know) if your dependent variable is called `y` in the
+#' model, but it may lead to some confusion in how you interpret the results of
+#' the simulations. The simulated values are always returned as a column called
+#' `y`.
 #'
-#' For ordinal models, I recommend setting `original_scale` to be FALSE. The
-#' function, underneath the hood, is actually calculating things on the level of
-#' the probability. It's just transforming back to a logit or a probit, if that
-#' is what you say you want.
-#'
-#' When `original_scale` is `TRUE` for Poisson models, the quantity returned is
-#' a logged lambda. When `FALSE`, this quantity is exponentiated.
+#' Factors (so-called "fixed effects") behave curiously in this function. For now,
+#' this function will politely assume your factors are *all* present in the
+#' `newdata` you create (even if you don't want them). Future updates
+#' will try to understand this behavior better. The only loss here is the
+#' efficiency of the simulation procedure, especially if you are not interested
+#' in simulated values of the dependent variable for particular combinations of
+#' the factor variable.
 #'
 #' @examples
 #'
 #' set.seed(8675309)
 #'
-#' Data <- mtcars
-#' Data$region <- c("Japan", "Japan", "Japan",
-#'                  "USA", "USA", "USA", "USA",
-#'                  "Europe", "Europe", "Europe", "Europe",
-#'                  "Europe", "Europe", "Europe",
-#'                  "USA", "USA", "USA", "Europe",
-#'                  "Japan", "Japan", "Japan",
-#'                  "USA", "USA", "USA", "USA",
-#'                  "Europe", "Europe", "Europe",
-#'                  "USA", "Europe", "Europe", "Europe")
+#' M1 <- lm(mpg ~ hp + am, mtcars)
 #'
-#' M1 <- lm(mpg ~ hp + region, Data)
-#'
-#' sim_qi(M1, 10)
-#'
-#' newdat <- data.frame(mpg = 0, region = c("Europe", "Japan", "USA"), hp = 123)
+#' newdat <- data.frame(am = c(0,1), hp = 123)
 #'
 #' sim_qi(M1, nsim = 100, newdat, return_newdata = TRUE)
 #'
-#' @importFrom stevemisc smvrnorm
+#' @importFrom MASS mvrnorm
 #' @importFrom methods is
 #' @importFrom tibble as_tibble tibble
 #' @importFrom stats coef model.frame model.matrix plogis pnorm qnorm rchisq terms vcov
@@ -98,20 +126,33 @@
 # sim_qi <- function(mod, nsim = 1000, newdata, original_scale = TRUE, return_newdata = FALSE, ...) {
 #     UseMethod("sim_qi")
 # }
+# I may want to do it this way down the road if I can do even more with this.
 
 
-
-sim_qi <- function(mod, nsim = 1000, newdata, original_scale = TRUE, return_newdata = FALSE) {
+sim_qi <- function(mod, nsim = 1000, newdata, original_scale = TRUE, return_newdata = FALSE, vcov = NULL) {
     # if (!identical(class(mod), "lm")) {
     #     stop("Hold on a second.")
     # }
 
+    # various stops and warnings ----
+
+    if((missing(newdata) & return_newdata == TRUE)) {
+        stop("`return_newdata` cannot be TRUE with no data frame supplied to the `newdata` argument.")
+    }
+
+    if(!missing(newdata)) {
+        if(!is(newdata, "data.frame")) {
+        stop("The object supplied to the `newdata` argument must be a data frame.")
+        }
+    } else {
+
+    }
 
 
     # class: lm -----
     if(identical(class(mod), "lm")) {
 
-        the_sims <- .sim_qi.lm(mod, nsim, newdata, original_scale)
+        the_sims <- .sim_qi.lm(mod, nsim, newdata, original_scale, vcov)
 
     }
 
@@ -119,15 +160,28 @@ sim_qi <- function(mod, nsim = 1000, newdata, original_scale = TRUE, return_newd
     # class: glm -----
     if(is(mod, "glm")) {
 
-        the_sims <- .sim_qi.glm(mod, nsim, newdata, original_scale)
+        the_sims <- .sim_qi.glm(mod, nsim, newdata, original_scale, vcov)
     }
 
 
     # class: clm -----
     if(is(mod, "clm")) {
 
-        the_sims <- .sim_qi.clm(mod, nsim, newdata, original_scale)
+        the_sims <- .sim_qi.clm(mod, nsim, newdata, original_scale, vcov)
 
+    }
+
+
+    # class: logistf -----
+    if(is(mod, "logistf")) {
+
+        the_sims <- .sim_qi.logistf(mod, nsim, newdata, original_scale, vcov)
+
+    }
+
+
+    if(missing(newdata)) {
+        newdata <- model.frame(mod)
     }
 
     if(return_newdata == TRUE) {
